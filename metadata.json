@@ -1,0 +1,5 @@
+{
+  "name": "InterviewGenie",
+  "description": "A professional real-time AI voice interviewer for conducting job interviews.",
+  "requestFramePermissions": ["microphone", "camera"]
+}

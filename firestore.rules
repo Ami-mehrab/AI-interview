@@ -1,0 +1,144 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: jobDescriptions
+// Document ID: {jdId}
+// Fields:
+//   - role: string (required)
+//   - description: string (required)
+//   - generatedQuestions: list of strings (optional)
+//   - createdAt: timestamp (optional)
+//   - createdBy: string (required, UID)
+//
+// Collection: candidates
+// Document ID: {candidateId}
+// Fields:
+//   - candidate_name: string (required)
+//   - candidate_email: string (optional)
+//   - applied_role: string (required)
+//   - job_description: string (optional)
+//   - generated_questions: list of strings (optional)
+//   - approved_questions: list of strings (optional)
+//   - questions_approved: bool (optional)
+//   - status: string (uploaded/questions_generated/approved/interview_started/interview_completed)
+//   - interview_link: string (optional)
+//   - createdBy: string (required, UID)
+//   - created_at: timestamp (optional)
+//   - updated_at: timestamp (optional)
+//
+// Collection: interviews
+// Document ID: {interviewId}
+// Fields:
+//   - candidate_id: string (required)
+//   - candidate_name: string (required)
+//   - applied_role: string (optional)
+//   - job_description: string (optional)
+//   - approved_questions: list of strings (optional)
+//   - transcript: list of maps (optional)
+//   - evaluation_json: string (optional)
+//   - status: string (not_started/in-progress/completed)
+//   - started_at: timestamp (optional)
+//   - ended_at: timestamp (optional)
+//   - createdBy: string (required, UID)
+//   - created_at: timestamp (optional)
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+          request.auth.token.email == "mahrabbappy33@gmail.com");
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.createdBy;
+    }
+
+    function isCandidateEmail(email) {
+      return isAuthenticated() && (request.auth.token.email.toLowerCase() == email.toLowerCase());
+    }
+
+    function isAuthorizedCandidate(interviewId) {
+      return isAuthenticated() && request.auth.token.role == "candidate" && request.auth.token.interviewId == interviewId;
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidJD(data) {
+      return data.role is string && data.role.size() > 0 && data.role.size() < 200 &&
+             data.description is string && data.description.size() > 0 && data.description.size() < 10000 &&
+             data.createdBy == request.auth.uid;
+    }
+
+    function isValidCandidate(data) {
+      return data.candidate_name is string && data.candidate_name.size() > 0 && data.candidate_name.size() < 100 &&
+             data.applied_role is string && data.applied_role.size() > 0 && data.applied_role.size() < 200 &&
+             (!('candidate_email' in data) || data.candidate_email == "" || isValidEmail(data.candidate_email)) &&
+             data.createdBy == request.auth.uid;
+    }
+
+    function isValidInterview(data) {
+      return data.candidate_id is string &&
+             data.candidate_name is string && data.candidate_name.size() > 0 && data.candidate_name.size() < 100 &&
+             data.createdBy == request.auth.uid;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /jobDescriptions/{jdId} {
+      allow read: if isAuthenticated() && (isDocOwner() || isAdmin());
+      allow create: if isAuthenticated() && isValidJD(request.resource.data);
+      allow update: if isAuthenticated() && isDocOwner() && isValidJD(request.resource.data);
+      allow delete: if isAuthenticated() && isDocOwner();
+    }
+
+    match /candidates/{candidateId} {
+      allow read: if (resource == null) || 
+                     (resource.data.candidate_email == null) || 
+                     (resource.data.candidate_email == "") ||
+                     (isCandidateEmail(resource.data.candidate_email) || isAuthorizedCandidate(candidateId) || isDocOwner() || isAdmin());
+      allow create: if isAuthenticated() && isValidCandidate(request.resource.data);
+      allow update: if (isAuthenticated() && (isDocOwner() || isAdmin() || isCandidateEmail(resource.data.candidate_email) || isAuthorizedCandidate(candidateId))) &&
+                      (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updated_at', 'transcript', 'transcript_text', 'evaluation', 'score', 'evaluation_json', 'interview_screenshot_url', 'session_status', 'window_expires_at', 'questions_approved', 'approved_questions', 'generated_questions', 'started_at', 'ended_at', 'interview_link', 'interview_id']));
+      allow delete: if isAuthenticated() && isDocOwner();
+    }
+
+    match /interviews/{interviewId} {
+      // Legacy support for old interviews
+      allow read: if (resource == null) || 
+                     (resource.data.candidate_email == null) || 
+                     (resource.data.candidate_email == "") ||
+                     (isCandidateEmail(resource.data.candidate_email) || isAuthorizedCandidate(interviewId) || isDocOwner() || isAdmin());
+      allow create: if isAuthenticated() && isValidInterview(request.resource.data);
+      allow update: if (isAuthenticated() && (isDocOwner() || isAdmin() || isCandidateEmail(resource.data.candidate_email) || isAuthorizedCandidate(interviewId))) &&
+                      (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['transcript', 'transcript_text', 'status', 'started_at', 'ended_at', 'updated_at', 'interview_screenshot_url', 'evaluation_json']));
+      allow delete: if isAuthenticated() && (isDocOwner() || isAdmin());
+    }
+    
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isAdmin();
+    }
+  }
+}
