@@ -1,4 +1,4 @@
-import express from "express";
+import * as express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
@@ -29,7 +29,7 @@ console.log("Firestore Database ID:", firebaseConfig.firestoreDatabaseId || "(de
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = 3001;
 
   app.use(express.json());
 
