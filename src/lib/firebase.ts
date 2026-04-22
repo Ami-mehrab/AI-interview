@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { initializeFirestore, getDocFromServer, doc } from 'firebase/firestore';
+import { initializeFirestore } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
@@ -9,17 +9,10 @@ export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
 }, firebaseConfig.firestoreDatabaseId);
 
-// Test connection
-async function testConnection() {
-  try {
-    console.log("Testing Firestore connection to project:", firebaseConfig.projectId);
-    await getDocFromServer(doc(db, '_test_connection_', 'init'));
-    console.log("Firestore connection test successful.");
-  } catch (error) {
-    console.error("Firestore connection test failed:", error);
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("The client is offline. This often means the Project ID or API Key is incorrect, or the Firestore API is not enabled for the project.");
-    }
-  }
-}
-testConnection();
+// Note: Do not attempt a forced read of a protected document at startup.
+// Firestore rules commonly require authentication or ownership for reads/writes,
+// which would cause a noisy "Missing or insufficient permissions" error in the
+// console during app initialization. If you need an explicit connectivity test,
+// do it after the user signs in or use a dedicated public document designed
+// for health checks.
+console.log("Firestore initialized for project:", firebaseConfig.projectId);
